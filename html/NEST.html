@@ -1,0 +1,310 @@
+<html>
+<head>
+
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/dojo/1.10.4/dijit/themes/nihilo/nihilo.css">
+<script src="https://sdk.amazonaws.com/js/aws-sdk-2.7.16.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/dojo/1.10.4/dojo/dojo.js"
+            data-dojo-config="async: true,parseOnLoad: true"></script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/xrange.js"></script>
+<script src="https://code.highcharts.com/modules/exporting.js"></script>
+
+<script type="text/javascript">
+AWS.config.update({
+  region: "us-east-1",
+  // The endpoint should point to the local or remote computer where DynamoDB (downloadable) is running.
+  //endpoint: 'http://localhost:8000',
+  /*
+    accessKeyId and secretAccessKey defaults can be used while using the downloadable version of DynamoDB. 
+    For security reasons, do not store AWS Credentials in your files. Use Amazon Cognito instead.
+  */
+  //accessKeyId: "fakeMyKeyId",
+  //secretAccessKey: "fakeSecretAccessKey"
+  credentials: new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: ""
+    })
+});
+
+  /* 
+     Uncomment the following code to configure Amazon Cognito and make sure to 
+     remove the endpoint, accessKeyId and secretAccessKey specified in the code above. 
+     Make sure Cognito is available in the DynamoDB web service region (specified above).
+     Finally, modify the IdentityPoolId and the RoleArn with your own.
+  */
+/*
+AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+IdentityPoolId: "us-west-2:12345678-1ab2-123a-1234-a12345ab12",
+RoleArn: "arn:aws:iam::123456789012:role/dynamocognito"
+});
+*/
+
+var dynamodb = new AWS.DynamoDB();
+var docClient = new AWS.DynamoDB.DocumentClient();
+
+var tableName = "nest_thermostat";
+
+var devices = [
+    { label: "15AA01AC30170FLK", value: "15AA01AC30170FLK" }
+];
+var deviceSelect = null;
+
+var beginningOfTime = "2017-12-11";
+var date = new Date();
+date.setDate(date.getDate() - 1);
+var endOfTime = null;
+
+require([
+    "dojo/dom",
+    "dojo/dom-construct",
+    "dojo/_base/lang",
+    "dijit/registry",
+    "dojo/date/locale",
+    "dijit/form/Select",
+    "dijit/form/DateTextBox",
+    "dojo/number",
+    "dijit/form/Button",
+    "dojo/domReady!"
+], function (dom, domConstruct, lang, registry, locale, Select, DateTextBox, number, Button) {
+    
+    deviceSelect = new Select({
+        name: "deviceSelect",
+        options: devices
+    });
+    deviceSelect.on("change", function(){
+      queryData();
+    });
+    deviceSelect.placeAt(dom.byId("devices")).startup();
+
+    startDate = new DateTextBox({
+        value: beginningOfTime
+    });
+    startDate.on("change", function(){
+      queryData();
+    });
+    startDate.placeAt(dom.byId("startDate")).startup();
+
+    endOfTime = locale.format( date, {selector:"date", datePattern:"y-M-d" } );
+    endDate = new DateTextBox({
+        value: endOfTime
+    });
+    endDate.on("change", function(){
+      queryData();
+    });
+    endDate.placeAt(dom.byId("endDate")).startup();
+
+    var deviceData = [];
+
+    function queryData() {
+        
+        domConstruct.empty(dom.byId("container2"));
+
+        dom.byId('textarea').innerHTML = "";
+        dom.byId('textarea').innerHTML += "Querying NEST.";
+
+        var params = {
+            TableName : tableName,
+            KeyConditionExpression: "#d = :de and #da between :start_day and :end_day",
+            ExpressionAttributeNames:{
+                "#da": "day",
+                "#d": "device"
+            },
+            ExpressionAttributeValues: {
+                ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-M-d" } ),
+                ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-M-d" } ),
+                ":de":deviceSelect.get("value")
+            }
+        };
+        docClient.query(params, function(err, data) {
+            
+            if (err) {
+                dom.byId('textarea').innerHTML += "Unable to query. Error: " + "\n" + JSON.stringify(err, undefined, 2);
+            } else {
+
+                var dataDays = [];
+                var dataHeat = [];
+                var dataCool = [];
+
+                var totalHeat = 0;
+                var totalCool = 0;
+
+                data.Items.forEach(function(device) {
+
+                    var d = new Date(device.day);
+                    d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+                    dataDays.push(locale.format( d, {selector:"date", datePattern:"M/d/y" }));
+                    dataHeat.push(device.total_heating_time);
+                    dataCool.push(device.total_cooling_time);
+
+                    deviceData.push(device);
+
+                    totalHeat += device.total_heating_time;
+                    totalCool += device.total_cooling_time;
+
+                    //document.getElementById('textarea').innerHTML += "\n" + device.day + ": " + device.total_heating_time + " " + device.total_cooling_time;
+                });
+
+                Highcharts.chart('container', {
+                    chart: {
+                        type: 'area'
+                    },
+                    title: {
+                        text: 'Nest History for ' + deviceSelect.get("value")
+                    },
+                    xAxis: {
+                        categories: dataDays,
+                        allowDecimals: false,
+                        labels: {
+                            formatter: function () {
+                                return this.value; // clean, unformatted number for day
+                            }
+                        }
+                    },
+                    yAxis: {
+                        title: {
+                            text: 'Total Time Running'
+                        },
+                        labels: {
+                            formatter: function () {
+                                return number.format(this.value / 60 / 60 , { places: 1 }) + ' hours'
+                            }
+                        }
+                    },
+                    tooltip: {
+                        pointFormatter: function () {
+                            return 'The ' + this.series.name + ' ran for <b>' + number.format(this.y / 60 / 60 , { places: 1 }) + '</b> hours<br/>on ' + this.category
+                        }
+                    },
+                    plotOptions: {
+                        series: {
+                            cursor: 'pointer',
+                            point: {
+                                events: {
+                                    click: function () {
+                                        showDetails(this.series.name, this.x);
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    series: [{
+                        name: 'Heat',
+                        data: dataHeat,
+                        color: '#f7a35c'
+                    }, {
+                        name: 'Cool',
+                        data: dataCool
+                    }]
+                });
+
+                if (data.Items.length > 0) {
+                    dom.byId('textarea').innerHTML = "Average Heat Run Time: " + number.format((totalHeat / data.Items.length) / 60 / 60 , { places: 1 }) + " hours<br />Average Cool Run Time: " + number.format((totalCool / data.Items.length) / 60 / 60 , { places: 1 }) + " hours";
+                }
+            }
+        });
+    }
+
+    function showDetails(seriesName, index) {
+        console.log(deviceData[index]);
+        var device = deviceData[index];
+
+        var d = new Date(device.day);
+        //d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+        //d.setDate(d.getDate() + 1);
+
+        var cycleData = [];
+        var cycleObject = {};
+        cycleObject.x = d.getTime();
+        cycleObject.x2 = d.getTime();
+        cycleObject.y = 0;
+        cycleData.push(cycleObject);
+
+        for (var i=0; i < device.cycles.length; i++) {
+
+            var cycle = device.cycles[i];
+            var cylcleTime = new Date(device.day);
+            //d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+
+            cycleObject = {};
+            cycleObject.x = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.start);
+            cycleObject.x2 = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.duration);
+            cycleObject.y = 0;
+
+            if (seriesName == 'Heat' && cycle.type == 1) {
+                cycleObject.color = '#f7a35c'
+                cycleData.push(cycleObject);
+            }
+            // need to determine cycle.type for Cool
+            else if (seriesName == 'Cool' && cycle.type == 2) {
+                cycleData.push(cycleObject);
+            }
+        }
+
+        d = new Date(device.day);
+        // d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+        d.setDate(d.getDate() + 1);
+        cycleObject = {};
+        cycleObject.x = d.getTime();
+        cycleObject.x2 = d.getTime();
+        cycleObject.y = 0;
+        cycleData.push(cycleObject);
+       
+        Highcharts.chart('container2', {
+            chart: {
+                type: 'xrange'
+            },
+            title: {
+                text: 'Cycles for ' + locale.format( d, {selector:"date", datePattern:"M/d/y" })
+            },
+            xAxis: {
+                type: 'datetime'
+            },
+            yAxis: {
+                title: {
+                    text: ''
+                },
+                categories: [seriesName]
+            },
+            tooltip: {
+                pointFormatter: function () {
+                    return 'Duration: ' + number.format(((this.x2 - this.x) / 1000) / 60, { places: 1 }) + ' minutes';
+                }
+            },
+            series: [{
+                name: 'Time of Day',
+                data: cycleData
+            }]
+
+        });
+
+    }
+
+    queryData();
+});
+
+
+
+</script>
+</head>
+
+<body class="nihilo" style="font-family: sans-serif">
+        
+    <div id="container" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+
+    <div id="container2" style="min-width: 310px; height: 200px; margin: 0 auto"></div>
+
+    <br>
+    <div style="display: table;">
+        <div style="display: table-row;">
+            <div style="display: table-cell;padding: 5px;" >Device: </div><div style="display: table-cell;padding: 5px;" id="devices"></div>
+        </div>
+        <div style="display: table-row;">
+            <div style="display: table-cell;padding: 5px;" >Start Date: </div><div style="display: table-cell;padding: 5px;" id="startDate"></div>
+        </div>
+        <div style="display: table-row;">
+            <div style="display: table-cell;padding: 5px;" >End Date: </div><div style="display: table-cell;padding: 5px;" id="endDate"></div>
+        </div>
+    </div>
+    <div id= "textarea"></div>
+
+</body>
+</html>
