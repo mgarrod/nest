@@ -48,6 +48,8 @@ var devices = [
 ];
 var deviceSelect = null;
 
+var deviceData = [];
+
 var beginningOfTime = "2017-12-11";
 var date = new Date();
 date.setDate(date.getDate() - 1);
@@ -92,8 +94,6 @@ require([
     });
     endDate.placeAt(dom.byId("endDate")).startup();
 
-    var deviceData = [];
-
     function queryData() {
         
         domConstruct.empty(dom.byId("container2"));
@@ -123,6 +123,8 @@ require([
                 var dataDays = [];
                 var dataHeat = [];
                 var dataCool = [];
+
+                deviceData = [];
 
                 var totalHeat = 0;
                 var totalCool = 0;
