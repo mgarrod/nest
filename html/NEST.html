@@ -21,7 +21,7 @@ AWS.config.update({
   //accessKeyId: "fakeMyKeyId",
   //secretAccessKey: "fakeSecretAccessKey"
   credentials: new AWS.CognitoIdentityCredentials({
-        IdentityPoolId: ""
+        IdentityPoolId: "us-east-1:2aabf762-f6a1-4108-bf2a-b620efe5e16b"
     })
 });
 
@@ -190,9 +190,9 @@ require([
                         point: {
                             events: {
                                 click: function () {
-                                    if (this.series.name == 'Heat' || this.series.name == 'Cool') {
-                                        showDetails(this.series.name, this.x);
-                                    }
+                                    //if (this.series.name == 'Heat' || this.series.name == 'Cool') {
+                                        showDetails(this.x);
+                                    //}
                                 }
                             }
                         }
@@ -203,8 +203,8 @@ require([
         });
     }
 
-    function showDetails(seriesName, index) {
-        console.log(deviceData[index]);
+    function showDetails(index) {
+        //console.log(deviceData[index]);
         var device = deviceData[index];
 
         var d = new Date(device.day);
@@ -229,14 +229,11 @@ require([
             cycleObject.x2 = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.duration);
             cycleObject.y = 0;
 
-            if (seriesName == 'Heat' && cycle.type == 1) {
+            if (cycle.type == 1) {
                 cycleObject.color = '#f7a35c'
-                cycleData.push(cycleObject);
             }
-            // need to determine cycle.type for Cool
-            else if (seriesName == 'Cool' && cycle.type == 2) {
-                cycleData.push(cycleObject);
-            }
+
+            cycleData.push(cycleObject);
         }
 
         d = new Date(device.day);
@@ -248,14 +245,14 @@ require([
         cycleObject.y = 0;
         cycleData.push(cycleObject);
 
-        var totalTimeRunning = seriesName == 'Heat' ? device.total_heating_time : device.total_cooling_time;
+        var totalTimeRunning = number.format( (device.total_heating_time + device.total_cooling_time) / 60 / 60 , { places: 1 });
        
         Highcharts.chart('container2', {
             chart: {
                 type: 'xrange'
             },
             title: {
-                text: 'Cycles for ' + locale.format( d, {selector:"date", datePattern:"M/d/y" }) + ' (' + number.format(totalTimeRunning / 60 / 60 , { places: 1 }) + ' hours)'
+                text: 'Cycles for ' + locale.format( d, {selector:"date", datePattern:"M/d/y" }) + ' (' + totalTimeRunning + ' hours)'
             },
             xAxis: {
                 type: 'datetime'
@@ -264,7 +261,7 @@ require([
                 title: {
                     text: ''
                 },
-                categories: [seriesName]
+                categories: ['Heat & Cool']
             },
             tooltip: {
                 pointFormatter: function () {
