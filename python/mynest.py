@@ -83,11 +83,11 @@ def lambda_handler(event, context):
                         for iiii in range(len(days)):
                             day = days[iiii]
                             aday = day["day"]
-                            unavailable = True
+                            unavailable = False
                             try:
                                 unavailable = day["unavailable"]
                             except:
-                                unavailable = True
+                                unavailable = False
                             if not unavailable:
                                 device_timezone_offset = day["device_timezone_offset"]
                                 total_heating_time = day["total_heating_time"]
