@@ -50,14 +50,14 @@ def lambda_handler(event, context):
 
         structures = d["user"][userRid]["structures"]
         if len(structures) == 0:
-            sendEmail(username)
+            sendEmail(username, "No structures")
             sys.exit(0)
         for i in range(len(structures)):
             structure = structures[i]
             structure = structure[structure.find(".")+1:]
             devices = d["structure"][structure]["devices"]
             if len(devices) == 0:
-                sendEmail(username)
+                sendEmail(username, "No devices")
                 sys.exit(0)
             for ii in range(len(devices)):
                 device = devices[ii]
@@ -78,41 +78,48 @@ def lambda_handler(event, context):
                         object = objects[iii]
                         days = object["value"]["days"]
                         if len(days) == 0:
-                            sendEmail(username)
+                            sendEmail(username, "No days")
                             sys.exit(0)
                         for iiii in range(len(days)):
                             day = days[iiii]
                             aday = day["day"]
-                            device_timezone_offset = day["device_timezone_offset"]
-                            total_heating_time = day["total_heating_time"]
-                            total_cooling_time = day["total_cooling_time"]
-                            recent_avg_used = day["recent_avg_used"]
-                            usage_over_avg = day["usage_over_avg"]
-                            cycles = day["cycles"]
+                            unavailable = True
+                            try:
+                                unavailable = day["unavailable"]
+                            except:
+                                unavailable = True
+                            if not unavailable:
+                                device_timezone_offset = day["device_timezone_offset"]
+                                total_heating_time = day["total_heating_time"]
+                                total_cooling_time = day["total_cooling_time"]
+                                recent_avg_used = day["recent_avg_used"]
+                                usage_over_avg = day["usage_over_avg"]
+                                cycles = day["cycles"]
 
-                            table.put_item(
-                                Item={
-                                    'device': device,
-                                    'day': aday,
-                                    'device_timezone_offset': device_timezone_offset,
-                                    'total_heating_time': total_heating_time,
-                                    'total_cooling_time': total_cooling_time,
-                                    'recent_avg_used': recent_avg_used,
-                                    'usage_over_avg': usage_over_avg,
-                                    'cycles': cycles,
-                                }
-                            )
-                            '''
-                            for iiiii in range(len(cycles)):
-                                cycle = cycles[iiiii]
-                                start = cycle["start"]
-                                duration = cycle["duration"]
-                                type = cycle["type"]
-                            '''
-    except Exception:
-        sendEmail(username)
+                                table.put_item(
+                                    Item={
+                                        'device': device,
+                                        'day': aday,
+                                        'device_timezone_offset': device_timezone_offset,
+                                        'total_heating_time': total_heating_time,
+                                        'total_cooling_time': total_cooling_time,
+                                        'recent_avg_used': recent_avg_used,
+                                        'usage_over_avg': usage_over_avg,
+                                        'cycles': cycles,
+                                    }
+                                )
 
-def sendEmail(emailAddress):
+                                '''
+                                for iiiii in range(len(cycles)):
+                                    cycle = cycles[iiiii]
+                                    start = cycle["start"]
+                                    duration = cycle["duration"]
+                                    type = cycle["type"]
+                                '''
+    except Exception, e:
+        sendEmail(username, str(e))
+
+def sendEmail(emailAddress, message):
     # Replace sender@example.com with your "From" address.
     # This address must be verified with Amazon SES.
     SENDER = emailAddress
@@ -133,7 +140,7 @@ def sendEmail(emailAddress):
     SUBJECT = "Nest History Fail"
 
     # The email body for recipients with non-HTML email clients.
-    BODY_TEXT = ("nest history failed to load")
+    BODY_TEXT = ("nest history failed to load: " + message)
 
     # The character encoding for the email.
     CHARSET = "UTF-8"
@@ -175,4 +182,4 @@ def sendEmail(emailAddress):
         print(response['ResponseMetadata']['RequestId'])
 
 # testing
-# lambda_handler(None, None)
+lambda_handler(None, None)

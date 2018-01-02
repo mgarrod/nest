@@ -84,7 +84,7 @@ require([
 
     var date = new Date();
     date.setDate(date.getDate() - 8);
-    var beginningOfTime = locale.format( date, {selector:"date", datePattern:"y-M-d" } );
+    var beginningOfTime = locale.format( date, {selector:"date", datePattern:"y-MM-dd" } );
     startDate = new DateTextBox({
         value: beginningOfTime
     });
@@ -95,7 +95,7 @@ require([
 
     date = new Date();
     date.setDate(date.getDate() - 1);
-    var endOfTime = locale.format( date, {selector:"date", datePattern:"y-M-d" } );
+    var endOfTime = locale.format( date, {selector:"date", datePattern:"y-MM-dd" } );
     endDate = new DateTextBox({
         value: endOfTime
     });
@@ -301,8 +301,8 @@ require([
                     "#d": "device"
                 },
                 ExpressionAttributeValues: {
-                    ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-M-dd" } ),
-                    ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-M-dd" } ),
+                    ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                    ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
                     ":de": deviceSelect.get("value")
                 }
             };
@@ -363,7 +363,7 @@ require([
             tempMin = {};
             tempMax = {};
 
-            var url = 'https://www.ncdc.noaa.gov/cdo-web/api/v2/data?stationid=GHCND:USW00093812&datasetid=GHCND&datatypeid=TMIN&datatypeid=TMAX&units=standard&startdate=' + locale.format( startDate.get("value"), {selector:"date", datePattern:"y-M-dd" } ) + '&enddate=' + locale.format( endDate.get("value"), {selector:"date", datePattern:"y-M-dd" } ) + '&limit=1000';
+            var url = 'https://www.ncdc.noaa.gov/cdo-web/api/v2/data?stationid=GHCND:USW00093812&datasetid=GHCND&datatypeid=TMIN&datatypeid=TMAX&units=standard&startdate=' + locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ) + '&enddate=' + locale.format( endDate.get("value"), {selector:"date", datePattern:"y-M-dd" } ) + '&limit=1000';
             
             request.get(url, {
                 headers: {
