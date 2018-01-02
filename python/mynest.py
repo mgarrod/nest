@@ -88,6 +88,7 @@ def lambda_handler(event, context):
                                 unavailable = day["unavailable"]
                             except:
                                 unavailable = False
+
                             if not unavailable:
                                 device_timezone_offset = day["device_timezone_offset"]
                                 total_heating_time = day["total_heating_time"]
@@ -95,27 +96,34 @@ def lambda_handler(event, context):
                                 recent_avg_used = day["recent_avg_used"]
                                 usage_over_avg = day["usage_over_avg"]
                                 cycles = day["cycles"]
+                            else:
+                                device_timezone_offset = -18000
+                                total_heating_time = 0
+                                total_cooling_time = 0
+                                recent_avg_used = 0
+                                usage_over_avg = 0
+                                cycles = []
 
-                                table.put_item(
-                                    Item={
-                                        'device': device,
-                                        'day': aday,
-                                        'device_timezone_offset': device_timezone_offset,
-                                        'total_heating_time': total_heating_time,
-                                        'total_cooling_time': total_cooling_time,
-                                        'recent_avg_used': recent_avg_used,
-                                        'usage_over_avg': usage_over_avg,
-                                        'cycles': cycles,
-                                    }
-                                )
+                            table.put_item(
+                                Item={
+                                    'device': device,
+                                    'day': aday,
+                                    'device_timezone_offset': device_timezone_offset,
+                                    'total_heating_time': total_heating_time,
+                                    'total_cooling_time': total_cooling_time,
+                                    'recent_avg_used': recent_avg_used,
+                                    'usage_over_avg': usage_over_avg,
+                                    'cycles': cycles,
+                                }
+                            )
 
-                                '''
-                                for iiiii in range(len(cycles)):
-                                    cycle = cycles[iiiii]
-                                    start = cycle["start"]
-                                    duration = cycle["duration"]
-                                    type = cycle["type"]
-                                '''
+                            '''
+                            for iiiii in range(len(cycles)):
+                                cycle = cycles[iiiii]
+                                start = cycle["start"]
+                                duration = cycle["duration"]
+                                type = cycle["type"]
+                            '''
     except Exception, e:
         sendEmail(username, str(e))
 
