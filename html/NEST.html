@@ -21,7 +21,7 @@ AWS.config.update({
   //accessKeyId: "fakeMyKeyId",
   //secretAccessKey: "fakeSecretAccessKey"
   credentials: new AWS.CognitoIdentityCredentials({
-        IdentityPoolId: ""
+        IdentityPoolId: "us-east-1:2aabf762-f6a1-4108-bf2a-b620efe5e16b"
     })
 });
 
@@ -168,7 +168,7 @@ require([
                     },
                     labels: {
                         formatter: function () {
-                            return this.value + '° F'
+                            return this.value + '&#186; F'
                         }
                     },
                     opposite: true
@@ -180,7 +180,7 @@ require([
                             return 'The ' + this.series.name + ' ran for <b>' + number.format(this.y / 60 / 60 , { places: 1 }) + '</b> hours (click for cycles)<br />'
                         }
                         else if (this.series.name == 'Minimum Tempature' || this.series.name == 'Maximum Tempature') {
-                            return 'The ' + this.series.name + ' was <b>' + this.y + '</b>° F<br />'
+                            return 'The ' + this.series.name + ' was <b>' + this.y + '</b>&#186; F<br />'
                         }
                     }
                 },
