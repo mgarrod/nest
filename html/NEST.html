@@ -21,7 +21,7 @@ AWS.config.update({
   //accessKeyId: "fakeMyKeyId",
   //secretAccessKey: "fakeSecretAccessKey"
   credentials: new AWS.CognitoIdentityCredentials({
-        IdentityPoolId: "us-east-1:2aabf762-f6a1-4108-bf2a-b620efe5e16b"
+        IdentityPoolId: ""
     })
 });
 
@@ -41,20 +41,23 @@ RoleArn: "arn:aws:iam::123456789012:role/dynamocognito"
 var dynamodb = new AWS.DynamoDB();
 var docClient = new AWS.DynamoDB.DocumentClient();
 
-var tableName = "nest_thermostat";
+var nestTableName = "nest_thermostat";
 
-var devices = [
-    { label: "Dining Room", value: "15AA01AC30170FLK" }
-];
-var deviceSelect = null;
+// var devices = [
+//     { label: "Dining Room", value: "15AA01AC30170FLK" }
+// ];
+// var deviceSelect = null;
 
-var deviceData = [];
+
 var dataDays = [];
-var dataHeat = [];
-var dataCool = [];
+var formattedDataDays = [];
 
-var tempMin = null;
-var tempMax = null;
+var nestDeviceData = [];
+var nestHeat = {};
+var nestCool = {};
+
+var tempMin = {};
+var tempMax = {};
 
 require([
     "dojo/dom",
@@ -73,17 +76,8 @@ require([
     "dojo/domReady!"
 ], function (dom, domConstruct, lang, registry, locale, Select, DateTextBox, CheckBox, number, request, all, Deferred, Button) {
     
-    deviceSelect = new Select({
-        name: "deviceSelect",
-        options: devices
-    });
-    deviceSelect.on("change", function(){
-      buildMainChart();
-    });
-    deviceSelect.placeAt(dom.byId("devices")).startup();
-
     var date = new Date();
-    date.setDate(date.getDate() - 8);
+    date.setDate(date.getDate() - 7);
     var beginningOfTime = locale.format( date, {selector:"date", datePattern:"y-MM-dd" } );
     startDate = new DateTextBox({
         value: beginningOfTime
@@ -104,46 +98,63 @@ require([
     });
     endDate.placeAt(dom.byId("endDate")).startup();
 
-    var checkBox = new CheckBox({
-        name: "showWeather",
-        checked: false
-    });
-    checkBox.on("change", function(value){
-        buildMainChart();
-    });
-    checkBox.placeAt(dom.byId("showWeather")).startup();
+    function getDates(startDate, endDate) {
+	  var dates = [],
+	      currentDate = startDate,
+	      addDays = function(days) {
+	        var date = new Date(this.valueOf());
+	        date.setDate(date.getDate() + days);
+	        return date;
+	      };
+	  while (currentDate <= endDate) {
+	    dates.push(currentDate);
+	    currentDate = addDays.call(currentDate, 1);
+	  }
+	  return dates;
+	};
+
+	function getFormattedDates(startDate, endDate) {
+	  var dates = [],
+	      currentDate = startDate,
+	      addDays = function(days) {
+	        var date = new Date(this.valueOf());
+	        date.setDate(date.getDate() + days);
+	        return date;
+	      };
+	  while (currentDate <= endDate) {
+	    dates.push(locale.format(currentDate, {selector:"date", datePattern:"M/d/y" }));
+	    currentDate = addDays.call(currentDate, 1);
+	  }
+	  return dates;
+	};
 
     function buildMainChart() {
 
-        all([queryData(), getWeather()]).then(function(){
+    	dom.byId('textarea').innerHTML = 'Getting data...';
 
-            var series = [{
-                type: 'area',
-                yAxis: 0,
-                name: 'Heat',
-                data: dataHeat,
-                color: '#f7a35c'
-            }, {
-                type: 'area',
-                yAxis: 0,
-                name: 'Cool',
-                data: dataCool
-            }];
+        dataDays = getDates(startDate.get("value"), endDate.get("value"));
+        formattedDataDays = getFormattedDates(startDate.get("value"), endDate.get("value"));
 
-            if (checkBox.get("value") && tempMin != null && tempMax != null) {
-                series.push(tempMax);
-                series.push(tempMin);
-            }
+        all([getNest(), getWeather()]).then(function(){
+
+        	//dom.byId('textarea').innerHTML = '';
+
+        	var series = [
+        		nestHeat,
+        		nestCool,
+        		tempMax,
+        		tempMin
+        	];
 
             Highcharts.chart('container', {
                 // chart: {
                 //     type: 'area'
                 // },
                 title: {
-                    text: 'Nest History for ' + deviceSelect.get("displayedValue")
+                    text: 'Home Temperatures' //'Nest History for ' + deviceSelect.get("displayedValue")
                 },
                 xAxis: {
-                    categories: dataDays,
+                    categories: formattedDataDays,
                     crosshair: true,
                     allowDecimals: false,
                     labels: {
@@ -179,7 +190,7 @@ require([
                         if (this.series.name == 'Heat' || this.series.name == 'Cool') {
                             return 'The ' + this.series.name + ' ran for <b>' + number.format(this.y / 60 / 60 , { places: 1 }) + '</b> hours (click for cycles)<br />'
                         }
-                        else if (this.series.name == 'Minimum Tempature' || this.series.name == 'Maximum Tempature') {
+                        else if (this.series.name == 'Minimum Temperature' || this.series.name == 'Maximum Temperature') {
                             return 'The ' + this.series.name + ' was <b>' + this.y + '</b>\xB0 F<br />'
                         }
                     }
@@ -190,9 +201,7 @@ require([
                         point: {
                             events: {
                                 click: function () {
-                                    //if (this.series.name == 'Heat' || this.series.name == 'Cool') {
-                                        showDetails(this.x);
-                                    //}
+                                    showNestDetails(this.x);
                                 }
                             }
                         }
@@ -203,247 +212,263 @@ require([
         });
     }
 
-    function showDetails(index) {
-        //console.log(deviceData[index]);
-        var device = deviceData[index];
-
-        var d = new Date(device.day);
-        //d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
-        //d.setDate(d.getDate() + 1);
-
-        var cycleData = [];
-        var cycleObject = {};
-        cycleObject.x = d.getTime();
-        cycleObject.x2 = d.getTime();
-        cycleObject.y = 0;
-        cycleData.push(cycleObject);
-
-        for (var i=0; i < device.cycles.length; i++) {
-
-            var cycle = device.cycles[i];
-            var cylcleTime = new Date(device.day);
-            //d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
-
-            cycleObject = {};
-            cycleObject.x = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.start);
-            cycleObject.x2 = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.duration);
-            cycleObject.y = 0;
-
-            if (cycle.type == 1) {
-                cycleObject.color = '#f7a35c'
-            }
-
-            cycleData.push(cycleObject);
-        }
-
-        d = new Date(device.day);
-        // d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
-        d.setDate(d.getDate() + 1);
-        cycleObject = {};
-        cycleObject.x = d.getTime();
-        cycleObject.x2 = d.getTime();
-        cycleObject.y = 0;
-        cycleData.push(cycleObject);
-
-        var totalTimeRunning = number.format( (device.total_heating_time + device.total_cooling_time) / 60 / 60 , { places: 1 });
-       
-        Highcharts.chart('container2', {
-            chart: {
-                type: 'xrange'
-            },
-            title: {
-                text: 'Cycles for ' + locale.format( d, {selector:"date", datePattern:"M/d/y" }) + ' (' + totalTimeRunning + ' hours)'
-            },
-            xAxis: {
-                type: 'datetime'
-            },
-            yAxis: {
-                title: {
-                    text: ''
-                },
-                categories: ['Heat & Cool']
-            },
-            tooltip: {
-                pointFormatter: function () {
-                    return 'Duration: ' + number.format(((this.x2 - this.x) / 1000) / 60, { places: 1 }) + ' minutes';
-                }
-            },
-            series: [{
-                name: 'Time of Day',
-                data: cycleData
-            }]
-
-        });
-
-    }
-
-    function queryData() {
+    function getNest() {
         
         var deferred = new Deferred();
 
-        if (dataDays.length > 0 
-            && dataDays[0] == locale.format( startDate.get("value"), {selector:"date", datePattern:"M/d/y" } )
-            && dataDays[dataDays.length - 1] == locale.format( endDate.get("value"), {selector:"date", datePattern:"M/d/y" } )) {
+        domConstruct.empty(dom.byId("container2"));
 
-            deferred.resolve();
-        }
-        else { 
-            domConstruct.empty(dom.byId("container2"));
+        var params = {
+            TableName : nestTableName,
+            KeyConditionExpression: "#d = :de and #da between :start_day and :end_day",
+            ExpressionAttributeNames:{
+                "#da": "day",
+                "#d": "device"
+            },
+            ExpressionAttributeValues: {
+                ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                ":de": '15AA01AC30170FLK'
+            }
+        };
+        docClient.query(params, function(err, data) {
+            
+        	nestHeat = {};
+            nestCool = {};
 
-            dom.byId('textarea').innerHTML = "";
-            dom.byId('textarea').innerHTML += "Querying NEST.";
+            if (err) {
+                dom.byId('textarea').innerHTML += "Unable to query. Error: " + "\n" + JSON.stringify(err, undefined, 2);
+                deferred.resolve();
+            } else {
 
-            var params = {
-                TableName : tableName,
-                KeyConditionExpression: "#d = :de and #da between :start_day and :end_day",
-                ExpressionAttributeNames:{
-                    "#da": "day",
-                    "#d": "device"
-                },
-                ExpressionAttributeValues: {
-                    ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
-                    ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
-                    ":de": deviceSelect.get("value")
-                }
-            };
-            docClient.query(params, function(err, data) {
-                
-                if (err) {
-                    dom.byId('textarea').innerHTML += "Unable to query. Error: " + "\n" + JSON.stringify(err, undefined, 2);
-                    deferred.resolve();
-                } else {
+                nestDeviceData = [];
 
-                    dataDays = [];
-                    dataHeat = [];
-                    dataCool = [];
+                var nestHeatData = [];
+                var nestCoolData = [];
 
-                    deviceData = [];
+                var totalHeat = 0;
+                var totalCool = 0;
 
-                    var totalHeat = 0;
-                    var totalCool = 0;
+                var timeZoneOffset = -18000;
 
-                    data.Items.forEach(function(device) {
+                for (var i=0; i < dataDays.length; i++) {
 
-                        var d = new Date(device.day);
-                        d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
-                        dataDays.push(locale.format( d, {selector:"date", datePattern:"M/d/y" }));
-                        dataHeat.push(device.total_heating_time);
-                        dataCool.push(device.total_cooling_time);
+                	nestDeviceData[i] = null;
+                	nestHeatData[i] = null;
+                	nestCoolData[i] = null;
 
-                        deviceData.push(device);
+                    var device = null;
+                    for (var ii=0; ii < data.Items.length; ii++) {
 
-                        totalHeat += device.total_heating_time;
-                        totalCool += device.total_cooling_time;
+                        device = data.Items[ii];
+                        timeZoneOffset = device.device_timezone_offset;
+                        
+                        var nestDay = new Date(device.day);
+                        nestDay.setSeconds(nestDay.getSeconds() + Math.abs(device.device_timezone_offset));
 
-                        //document.getElementById('textarea').innerHTML += "\n" + device.day + ": " + device.total_heating_time + " " + device.total_cooling_time;
-                    });
+                        if (nestDay.getTime() == dataDays[i].getTime()) {
+                            
+                            nestHeatData[i] = device.total_heating_time;
+                            nestCoolData[i] = device.total_cooling_time;
 
-                    if (data.Items.length > 0) {
-                        dom.byId('textarea').innerHTML = "Average Heat Run Time: " + number.format((totalHeat / data.Items.length) / 60 / 60 , { places: 1 }) + " hours<br />Average Cool Run Time: " + number.format((totalCool / data.Items.length) / 60 / 60 , { places: 1 }) + " hours";
+                            nestDeviceData[i] = device;
+
+                            totalHeat += device.total_heating_time;
+                            totalCool += device.total_cooling_time;
+
+                            break;
+                        }
+                        else {
+                            device = null;
+                        }
                     }
-
-                    deferred.resolve();
-                    
+              
                 }
-            });
-        }
+                
+
+                if (data.Items.length > 0) {
+                    dom.byId('textarea').innerHTML = "Average Heat Run Time: " + number.format((totalHeat / data.Items.length) / 60 / 60 , { places: 1 }) + " hours<br />Average Cool Run Time: " + number.format((totalCool / data.Items.length) / 60 / 60 , { places: 1 }) + " hours";
+                }
+
+                nestHeat = {
+                    type: 'area',
+                    yAxis: 0,
+                    name: 'Heat',
+                    data: nestHeatData,
+                    color: '#f7a35c'
+                }
+
+                nestCool = {
+                    type: 'area',
+                    yAxis: 0,
+                    name: 'Cool',
+                    data: nestCoolData
+                }
+
+                deferred.resolve();
+                
+            }
+        });
         return deferred.promise;
     }
 
     function getWeather() {
 
         var deferred = new Deferred();
+    
+        tempMin = {};
+        tempMax = {};
 
-        checkBox.set("disabled", true);
-
-        tempMin = null;
-        tempMax = null;
-        if (checkBox.get('value')) {
-
-            tempMin = {};
-            tempMax = {};
-
-            var url = 'https://www.ncdc.noaa.gov/cdo-web/api/v2/data?stationid=GHCND:USW00093812&datasetid=GHCND&datatypeid=TMIN&datatypeid=TMAX&units=standard&startdate=' + locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ) + '&enddate=' + locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ) + '&limit=1000';
+        var url = 'https://www.ncdc.noaa.gov/cdo-web/api/v2/data?stationid=GHCND:USW00093812&datasetid=GHCND&datatypeid=TMIN&datatypeid=TMAX&units=standard&startdate=' + locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ) + '&enddate=' + locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ) + '&limit=1000';
+        
+        request.get(url, {
+            headers: {
+                "X-Requested-With": null,
+                'Content-Type': 'text/plain',
+                'token': 'otsRTNjOxNAorrXrOteFpKuyVkzbdfMu'
+            },
+            //withCredentials: true,
+            handleAs: 'json'
+        }).then(function(data){
             
-            request.get(url, {
-                headers: {
-                    "X-Requested-With": null,
-                    'Content-Type': 'text/plain',
-                    'token': 'otsRTNjOxNAorrXrOteFpKuyVkzbdfMu'
-                },
-                //withCredentials: true,
-                handleAs: 'json'
-            }).then(function(data){
-                
-                var tempMinData = [];
-                var tempMaxData = [];
+            var tempMinData = [];
+            var tempMaxData = [];
 
-                for (var i=0; i < data.results.length; i++) {
+            for (var ii=0; ii < dataDays.length; ii++) {
 
-                    // {"date":"2017-12-20T00:00:00","datatype":"TMAX","station":"GHCND:USW00093812","attributes":",,W,","value":50.0}
-                    var weatherData = data.results[i];
+            	var dataDaysDay = locale.format(dataDays[ii], {selector:"date", datePattern:"M/d/y" });
+            
+            	var minMaxCount = 0;
 
-                    var weatherDay = locale.format(new Date(weatherData.date), {selector:"date", datePattern:"M/d/y" });
+            	tempMinData[ii] = null;
+                tempMaxData[ii] = null;
 
-                    var dayIsFound = false;
-                    for (var ii=0; ii < dataDays.length; ii++) {
-                        if (weatherDay == dataDays[ii]) {
-                            dayIsFound = true;
-                            break;
-                        }
-                    }
+            	for (var i=0; i < data.results.length; i++) {
 
-                    if (dayIsFound) {
+                	// {"date":"2017-12-20T00:00:00","datatype":"TMAX","station":"GHCND:USW00093812","attributes":",,W,","value":50.0}
+                	var weatherData = data.results[i];
 
+                	var weatherDay = locale.format(new Date(weatherData.date), {selector:"date", datePattern:"M/d/y" });
+
+                    if (weatherDay == dataDaysDay) {
+                    	minMaxCount++;
                         if (weatherData.datatype == 'TMIN') {
-                            tempMinData.push(weatherData.value);
+                            tempMinData[ii] = weatherData.value;
                         }
                         else if (weatherData.datatype == 'TMAX') {
-                            tempMaxData.push(weatherData.value);
+                            tempMaxData[ii] = weatherData.value;
                         }
-
-                    }
-                    else {
-                        if (new Date(weatherData.date) >= new Date(dataDays[0])) {
-                            tempMinData.push(0);
-                            tempMaxData.push(0);
+                        if (minMaxCount == 2) {
+                        	break;
                         }
                         
                     }
-
                 }
 
-                tempMin = {
-                    type: 'spline',
-                    yAxis: 1,
-                    name: 'Minimum Tempature',
-                    data: tempMinData,
-                    color: '#0000ff'
-                }
+            }
 
-                tempMax = {
-                    type: 'spline',
-                    yAxis: 1,
-                    name: 'Maximum Tempature',
-                    data: tempMaxData,
-                    color: '#ff0000'
-                }
+            tempMin = {
+                type: 'spline',
+                yAxis: 1,
+                name: 'Minimum Temperature',
+                data: tempMinData,
+                color: '#0000ff'
+            }
 
-                checkBox.set("disabled", false);
-                deferred.resolve();
-            }, function(err){
-                dom.byId('textarea').innerHTML = 'Error getting weather';
-                checkBox.set("disabled", false);
-                deferred.resolve();
-            });
-        }
-        else {
-            checkBox.set("disabled", false);
+            tempMax = {
+                type: 'spline',
+                yAxis: 1,
+                name: 'Maximum Temperature',
+                data: tempMaxData,
+                color: '#ff0000'
+            }
+
             deferred.resolve();
-            
-        }
+        }, function(err){
+            dom.byId('textarea').innerHTML = 'Error getting weather';
+            deferred.resolve();
+        });
         
         return deferred.promise;
+    }
+
+    function showNestDetails(index) {
+        //console.log(deviceData[index]);
+        var device = nestDeviceData[index];
+
+        if (device != null) {
+
+	        var d = new Date(device.day);
+	        //d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+	        //d.setDate(d.getDate() + 1);
+
+	        var cycleData = [];
+	        var cycleObject = {};
+	        cycleObject.x = d.getTime();
+	        cycleObject.x2 = d.getTime();
+	        cycleObject.y = 0;
+	        cycleData.push(cycleObject);
+
+	        for (var i=0; i < device.cycles.length; i++) {
+
+	            var cycle = device.cycles[i];
+	            var cylcleTime = new Date(device.day);
+	            //d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+
+	            cycleObject = {};
+	            cycleObject.x = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.start);
+	            cycleObject.x2 = cylcleTime.setSeconds(cylcleTime.getSeconds() + cycle.duration);
+	            cycleObject.y = 0;
+
+	            if (cycle.type == 1) {
+	                cycleObject.color = '#f7a35c'
+	            }
+
+	            cycleData.push(cycleObject);
+	        }
+
+	        d = new Date(device.day);
+	        // d.setSeconds(d.getSeconds() + Math.abs(device.device_timezone_offset));
+	        d.setDate(d.getDate() + 1);
+	        cycleObject = {};
+	        cycleObject.x = d.getTime();
+	        cycleObject.x2 = d.getTime();
+	        cycleObject.y = 0;
+	        cycleData.push(cycleObject);
+
+	        var totalTimeRunning = number.format( (device.total_heating_time + device.total_cooling_time) / 60 / 60 , { places: 1 });
+	       
+	        Highcharts.chart('container2', {
+	            chart: {
+	                type: 'xrange'
+	            },
+	            title: {
+	                text: 'Cycles for ' + locale.format( d, {selector:"date", datePattern:"M/d/y" }) + ' (' + totalTimeRunning + ' hours)'
+	            },
+	            xAxis: {
+	                type: 'datetime'
+	            },
+	            yAxis: {
+	                title: {
+	                    text: ''
+	                },
+	                categories: ['Heat & Cool']
+	            },
+	            tooltip: {
+	                pointFormatter: function () {
+	                    return 'Duration: ' + number.format(((this.x2 - this.x) / 1000) / 60, { places: 1 }) + ' minutes';
+	                }
+	            },
+	            series: [{
+	                name: 'Time of Day',
+	                data: cycleData
+	            }]
+
+	        });
+	    }
+	    else {
+	    	domConstruct.empty(dom.byId("container2"));
+	    }
     }
 
     buildMainChart();
@@ -464,17 +489,11 @@ require([
     <br>
     <div style="display: table;">
         <div style="display: table-row;">
-            <div style="display: table-cell;padding: 5px;" ><b>Device:</b> </div><div style="display: table-cell;padding: 5px;" id="devices"></div>
-        </div>
-        <div style="display: table-row;">
             <div style="display: table-cell;padding: 5px;" ><b>Start Date: </b></div><div style="display: table-cell;padding: 5px;" id="startDate"></div>
         </div>
         <div style="display: table-row;">
             <div style="display: table-cell;padding: 5px;" ><b>End Date: </b></div><div style="display: table-cell;padding: 5px;" id="endDate"></div>
         </div>
-    </div>
-    <div style="padding: 5px;">
-        <div><div id="showWeather" style="float: left;"></div> <b>Show Outside Tempature</b></div>
     </div>
     <div style="padding: 5px;" id= "textarea"></div>
 
