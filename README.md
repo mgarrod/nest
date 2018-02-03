@@ -2,9 +2,6 @@
 
 Weather
 
-Stations:
-https://www.amazon.com/DK-Workbooks-Coding-Scratch-Workbook/dp/1465444823/ref=pd_bxgy_14_img_2?_encoding=UTF8&pd_rd_i=1465444823&pd_rd_r=EWP491E196ZN2CCXKN4X&pd_rd_w=nvfum&pd_rd_wg=EnEGZ&psc=1&refRID=EWP491E196ZN2CCXKN4X
-
 Best I could find:
 https://www.ncdc.noaa.gov/cdo-web/webservices/v2#dataTypes
 
