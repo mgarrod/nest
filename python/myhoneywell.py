@@ -1,5 +1,5 @@
-#https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=FhI6TXvj4guT6XeYbGHJIGSw1mbcGN1c&redirect_uri=http://localhost
-#curl -X POST https://api.honeywell.com/oauth2/token -H "Authorization: Basic RmhJNlRYdmo0Z3VUNlhlWWJHSEpJR1N3MW1iY0dOMWM6RXB4M2lLSTAwdzd1M2lSeA==" -H "Content-Type: application/x-www-form-urlencoded" -d "grant_type=authorization_code&code=qIXZERqC&redirect_uri=http://localhost"
+#https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=&redirect_uri=http://localhost
+#curl -X POST https://api.honeywell.com/oauth2/token -H "Authorization: Basic ==" -H "Content-Type: application/x-www-form-urlencoded" -d "grant_type=authorization_code&code=qIXZERqC&redirect_uri=http://localhost"
 
 import requests
 import json
