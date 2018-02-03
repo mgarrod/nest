@@ -42,6 +42,7 @@ var dynamodb = new AWS.DynamoDB();
 var docClient = new AWS.DynamoDB.DocumentClient();
 
 var nestTableName = "nest_thermostat";
+var honeywellTableName = "honeywell";
 
 // var devices = [
 //     { label: "Dining Room", value: "15AA01AC30170FLK" }
@@ -55,6 +56,16 @@ var formattedDataDays = [];
 var nestDeviceData = [];
 var nestHeat = {};
 var nestCool = {};
+
+var hwFurnaceTempLow = {};
+var hwFurnaceTempHigh = {};
+var hwFurnaceHumidLow = {};
+var hwFurnaceHumidHigh = {};
+
+var hwGarageTempLow = {};
+var hwGarageTempHigh = {};
+var hwGarageHumidLow = {};
+var hwGarageHumidHigh = {};
 
 var tempMin = {};
 var tempMax = {};
@@ -107,7 +118,8 @@ require([
 	        return date;
 	      };
 	  while (currentDate <= endDate) {
-	    dates.push(currentDate);
+	    //dates.push(currentDate);
+        dates.push(locale.format(currentDate, {selector:"date", datePattern:"y-MM-dd" }));
 	    currentDate = addDays.call(currentDate, 1);
 	  }
 	  return dates;
@@ -135,13 +147,17 @@ require([
         dataDays = getDates(startDate.get("value"), endDate.get("value"));
         formattedDataDays = getFormattedDates(startDate.get("value"), endDate.get("value"));
 
-        all([getNest(), getWeather()]).then(function(){
+        all([getNest(), getHoneywellFurnace(), getHoneywellGarage(), getWeather()]).then(function(){
 
         	//dom.byId('textarea').innerHTML = '';
 
         	var series = [
         		nestHeat,
         		nestCool,
+                hwFurnaceTempHigh,
+                hwFurnaceTempLow,
+                hwGarageTempHigh,
+                hwGarageTempLow,
         		tempMax,
         		tempMin
         	];
@@ -175,7 +191,7 @@ require([
                 },
                 {
                     title: {
-                        text: 'Outside Temperature'
+                        text: 'Temperatures'
                     },
                     labels: {
                         formatter: function () {
@@ -190,7 +206,7 @@ require([
                         if (this.series.name == 'Heat' || this.series.name == 'Cool') {
                             return 'The ' + this.series.name + ' ran for <b>' + number.format(this.y / 60 / 60 , { places: 1 }) + '</b> hours (click for cycles)<br />'
                         }
-                        else if (this.series.name == 'Minimum Temperature' || this.series.name == 'Maximum Temperature') {
+                        else {//if (this.series.name == 'Outside Low Temperature' || this.series.name == 'Outside High Temperature') {
                             return 'The ' + this.series.name + ' was <b>' + this.y + '</b>\xB0 F<br />'
                         }
                     }
@@ -249,8 +265,6 @@ require([
                 var totalHeat = 0;
                 var totalCool = 0;
 
-                var timeZoneOffset = -18000;
-
                 for (var i=0; i < dataDays.length; i++) {
 
                 	nestDeviceData[i] = null;
@@ -261,12 +275,8 @@ require([
                     for (var ii=0; ii < data.Items.length; ii++) {
 
                         device = data.Items[ii];
-                        timeZoneOffset = device.device_timezone_offset;
-                        
-                        var nestDay = new Date(device.day);
-                        nestDay.setSeconds(nestDay.getSeconds() + Math.abs(device.device_timezone_offset));
 
-                        if (nestDay.getTime() == dataDays[i].getTime()) {
+                        if (device.day == dataDays[i]) {
                             
                             nestHeatData[i] = device.total_heating_time;
                             nestCoolData[i] = device.total_cooling_time;
@@ -288,6 +298,9 @@ require([
 
                 if (data.Items.length > 0) {
                     dom.byId('textarea').innerHTML = "Average Heat Run Time: " + number.format((totalHeat / data.Items.length) / 60 / 60 , { places: 1 }) + " hours<br />Average Cool Run Time: " + number.format((totalCool / data.Items.length) / 60 / 60 , { places: 1 }) + " hours";
+                }
+                else {
+                    dom.byId('textarea').innerHTML = "";
                 }
 
                 nestHeat = {
@@ -312,6 +325,178 @@ require([
         return deferred.promise;
     }
 
+    function getHoneywellFurnace() {
+
+        var deferred = new Deferred();
+
+        var params = {
+            TableName : honeywellTableName,
+            KeyConditionExpression: "#d = :de and #da between :start_day and :end_day",
+            ExpressionAttributeNames:{
+                "#da": "day",
+                "#d": "device"
+            },
+            ExpressionAttributeValues: {
+                ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                ":de": '8a973584-0cb4-4282-a5a7-f43e65899245'
+            }
+        };
+        docClient.query(params, function(err, data) {
+            
+            hwFurnaceTempLow = {};
+            hwFurnaceTempHigh = {};
+            hwFurnaceHumidLow = {};
+            hwFurnaceHumidHigh = {};
+
+            if (err) {
+                dom.byId('textarea').innerHTML += "Unable to query honeywell. Error: " + "\n" + JSON.stringify(err, undefined, 2);
+                deferred.resolve();
+            } else {
+
+                var hwFurnaceTempLowData = [];
+                var hwFurnaceTempHighData = [];
+                var hwFurnaceHumidLowData = [];
+                var hwFurnaceHumidHighData = [];
+
+                for (var i=0; i < dataDays.length; i++) {
+
+                    hwFurnaceTempLowData[i] = null;
+                    hwFurnaceTempHighData[i] = null;
+                    hwFurnaceHumidLowData[i] = null;
+                    hwFurnaceHumidHighData[i] = null;
+
+                    var device = null;
+                    for (var ii=0; ii < data.Items.length; ii++) {
+
+                        device = data.Items[ii];
+                        
+                        if (device.day == dataDays[i]) {
+                            
+                            hwFurnaceTempLowData[i] = device.temperature_low;
+                            hwFurnaceTempHighData[i] = device.temperature_high;
+                            hwFurnaceHumidLowData[i] = device.humidity_low;
+                            hwFurnaceHumidHighData[i] = device.humidity_high;
+
+                            break;
+                        }
+                        else {
+                            device = null;
+                        }
+                    }
+              
+                }
+
+                hwFurnaceTempLow = {
+                    type: 'spline',
+                    yAxis: 1,
+                    name: 'Furnace Low Temperature',
+                    data: hwFurnaceTempLowData,
+                    color: '#0000ff'
+                }
+
+                hwFurnaceTempHigh = {
+                    type: 'spline',
+                    yAxis: 1,
+                    name: 'Furnace High Temperature',
+                    data: hwFurnaceTempHighData,
+                    color: '#ff0000'
+                }
+          
+                deferred.resolve();
+                
+            }
+        });
+        return deferred.promise;
+
+    }
+
+    function getHoneywellGarage() {
+
+        var deferred = new Deferred();
+
+        var params = {
+            TableName : honeywellTableName,
+            KeyConditionExpression: "#d = :de and #da between :start_day and :end_day",
+            ExpressionAttributeNames:{
+                "#da": "day",
+                "#d": "device"
+            },
+            ExpressionAttributeValues: {
+                ":start_day": locale.format( startDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                ":end_day": locale.format( endDate.get("value"), {selector:"date", datePattern:"y-MM-dd" } ),
+                ":de": '83a97b81-08b4-4619-8819-e644c03bf46b'
+            }
+        };
+        docClient.query(params, function(err, data) {
+            
+            hwGarageTempLow = {};
+            hwGarageTempHigh = {};
+            hwGarageHumidLow = {};
+            hwGarageHumidHigh = {};
+
+            if (err) {
+                dom.byId('textarea').innerHTML += "Unable to query honeywell. Error: " + "\n" + JSON.stringify(err, undefined, 2);
+                deferred.resolve();
+            } else {
+
+                var hwGarageTempLowData = [];
+                var hwGarageTempHighData = [];
+                var hwGarageHumidLowData = [];
+                var hwGarageHumidHighData = [];
+
+                for (var i=0; i < dataDays.length; i++) {
+
+                    hwGarageTempLowData[i] = null;
+                    hwGarageTempHighData[i] = null;
+                    hwGarageHumidLowData[i] = null;
+                    hwGarageHumidHighData[i] = null;
+
+                    var device = null;
+                    for (var ii=0; ii < data.Items.length; ii++) {
+
+                        device = data.Items[ii];
+                        
+                        if (device.day == dataDays[i]) {
+                            
+                            hwGarageTempLowData[i] = device.temperature_low;
+                            hwGarageTempHighData[i] = device.temperature_high;
+                            hwGarageHumidLowData[i] = device.humidity_low;
+                            hwGarageHumidHighData[i] = device.humidity_high;
+
+                            break;
+                        }
+                        else {
+                            device = null;
+                        }
+                    }
+              
+                }
+
+                hwGarageTempLow = {
+                    type: 'spline',
+                    yAxis: 1,
+                    name: 'Garage Low Temperature',
+                    data: hwGarageTempLowData,
+                    color: '#0000ff'
+                }
+
+                hwGarageTempHigh = {
+                    type: 'spline',
+                    yAxis: 1,
+                    name: 'Garage High Temperature',
+                    data: hwGarageTempHighData,
+                    color: '#ff0000'
+                }
+          
+                deferred.resolve();
+                
+            }
+        });
+        return deferred.promise;
+
+    }
+
     function getWeather() {
 
         var deferred = new Deferred();
@@ -334,9 +519,9 @@ require([
             var tempMinData = [];
             var tempMaxData = [];
 
-            for (var ii=0; ii < dataDays.length; ii++) {
+            for (var ii=0; ii < formattedDataDays.length; ii++) {
 
-            	var dataDaysDay = locale.format(dataDays[ii], {selector:"date", datePattern:"M/d/y" });
+            	var dataDaysDay = formattedDataDays[ii]; //locale.format(dataDays[ii], {selector:"date", datePattern:"M/d/y" });
             
             	var minMaxCount = 0;
 
@@ -370,7 +555,7 @@ require([
             tempMin = {
                 type: 'spline',
                 yAxis: 1,
-                name: 'Minimum Temperature',
+                name: 'Outside Low Temperature',
                 data: tempMinData,
                 color: '#0000ff'
             }
@@ -378,14 +563,14 @@ require([
             tempMax = {
                 type: 'spline',
                 yAxis: 1,
-                name: 'Maximum Temperature',
+                name: 'Outside High Temperature',
                 data: tempMaxData,
                 color: '#ff0000'
             }
 
             deferred.resolve();
         }, function(err){
-            dom.byId('textarea').innerHTML = 'Error getting weather';
+            dom.byId('textarea').innerHTML += 'Error getting weather';
             deferred.resolve();
         });
         
